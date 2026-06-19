@@ -48,7 +48,13 @@ secrets.json
 *.iws
 
 
-# --- PHẦN 4: FILE TẠM CỦA HỆ ĐIỀU HÀNH ---
+# --- PHẦN 4: NODE.JS / BACKEND ---
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+
+# --- PHẦN 5: FILE TẠM CỦA HỆ ĐIỀU HÀNH ---
 # Các file này không có giá trị cho mã nguồn, chỉ làm rác thư mục
 .DS_Store
 Thumbs.db
