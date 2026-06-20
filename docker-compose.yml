@@ -1,5 +1,18 @@
 version: '3.8'
 
+# Định nghĩa các cấu hình dùng chung để tránh lặp lại (DRY principle)
+x-service-defaults: &service-defaults
+  environment:
+    - NODE_ENV=development
+    - DB_HOST=postgres
+    - REDIS_HOST=redis
+    - JWT_SECRET=${JWT_SECRET}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_started
+
 services:
   # === DATABASES ===
   postgres:
@@ -29,160 +42,86 @@ services:
 
   # === BACKEND SERVICES ===
   api-gateway:
-    build:
-      context: ./backend
-      dockerfile: ./api-gateway/Dockerfile
+    <<: *service-defaults
+    build: { context: ./backend, dockerfile: ./api-gateway/Dockerfile }
     container_name: spa-api-gateway
-    ports:
-      - "3000:3000"
+    ports: ["3000:3000"]
     environment:
       - PORT=3000
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - JWT_SECRET=spa-ecosystem-jwt-secret-change-in-production
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      <<: *service-defaults.environment
 
   auth-service:
-    build:
-      context: ./backend
-      dockerfile: ./auth-service/Dockerfile
+    <<: *service-defaults
+    build: { context: ./backend, dockerfile: ./auth-service/Dockerfile }
     container_name: spa-auth-service
-    ports:
-      - "3001:3001"
+    ports: ["3001:3001"]
     environment:
       - PORT=3001
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - JWT_SECRET=spa-ecosystem-jwt-secret-change-in-production
-    depends_on:
-      postgres:
-        condition: service_healthy
+      <<: *service-defaults.environment
 
   crm-service:
-    build:
-      context: ./backend
-      dockerfile: ./crm-service/Dockerfile
+    <<: *service-defaults
+    build: { context: ./backend, dockerfile: ./crm-service/Dockerfile }
     container_name: spa-crm-service
-    ports:
-      - "3006:3006"
+    ports: ["3006:3006"]
     environment:
       - PORT=3006
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - JWT_SECRET=spa-ecosystem-jwt-secret-change-in-production
-    depends_on:
-      postgres:
-        condition: service_healthy
+      <<: *service-defaults.environment
 
   booking-service:
-    build:
-      context: ./backend
-      dockerfile: ./booking-service/Dockerfile
+    <<: *service-defaults
+    build: { context: ./backend, dockerfile: ./booking-service/Dockerfile }
     container_name: spa-booking-service
-    ports:
-      - "3003:3003"
+    ports: ["3003:3003"]
     environment:
       - PORT=3003
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - JWT_SECRET=spa-ecosystem-jwt-secret-change-in-production
-    depends_on:
-      postgres:
-        condition: service_healthy
+      <<: *service-defaults.environment
 
   pos-service:
-    build:
-      context: ./backend
-      dockerfile: ./pos-service/Dockerfile
+    <<: *service-defaults
+    build: { context: ./backend, dockerfile: ./pos-service/Dockerfile }
     container_name: spa-pos-service
-    ports:
-      - "3004:3004"
+    ports: ["3004:3004"]
     environment:
       - PORT=3004
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - JWT_SECRET=spa-ecosystem-jwt-secret-change-in-production
-    depends_on:
-      postgres:
-        condition: service_healthy
+      <<: *service-defaults.environment
 
   inventory-service:
-    build:
-      context: ./backend
-      dockerfile: ./inventory-service/Dockerfile
+    <<: *service-defaults
+    build: { context: ./backend, dockerfile: ./inventory-service/Dockerfile }
     container_name: spa-inventory-service
-    ports:
-      - "3005:3005"
+    ports: ["3005:3005"]
     environment:
       - PORT=3005
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - JWT_SECRET=spa-ecosystem-jwt-secret-change-in-production
-    depends_on:
-      postgres:
-        condition: service_healthy
+      <<: *service-defaults.environment
 
   ai-gateway:
-    build:
-      context: ./backend
-      dockerfile: ./ai-gateway/Dockerfile
+    <<: *service-defaults
+    build: { context: ./backend, dockerfile: ./ai-gateway/Dockerfile }
     container_name: spa-ai-gateway
-    ports:
-      - "3010:3010"
+    ports: ["3010:3010"]
     environment:
       - PORT=3010
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - JWT_SECRET=spa-ecosystem-jwt-secret-change-in-production
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-    depends_on:
-      postgres:
-        condition: service_healthy
+      <<: *service-defaults.environment
 
   analytics-service:
-    build:
-      context: ./backend
-      dockerfile: ./analytics-service/Dockerfile
+    <<: *service-defaults
+    build: { context: ./backend, dockerfile: ./analytics-service/Dockerfile }
     container_name: spa-analytics-service
-    ports:
-      - "3013:3013"
+    ports: ["3013:3013"]
     environment:
       - PORT=3013
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - JWT_SECRET=spa-ecosystem-jwt-secret-change-in-production
-    depends_on:
-      postgres:
-        condition: service_healthy
+      <<: *service-defaults.environment
 
   admin-service:
-    build:
-      context: ./backend
-      dockerfile: ./admin-service/Dockerfile
+    <<: *service-defaults
+    build: { context: ./backend, dockerfile: ./admin-service/Dockerfile }
     container_name: spa-admin-service
-    ports:
-      - "3015:3015"
+    ports: ["3015:3015"]
     environment:
       - PORT=3015
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - JWT_SECRET=spa-ecosystem-jwt-secret-change-in-production
-    depends_on:
-      postgres:
-        condition: service_healthy
+      <<: *service-defaults.environment
 
 volumes:
   postgres_data:
