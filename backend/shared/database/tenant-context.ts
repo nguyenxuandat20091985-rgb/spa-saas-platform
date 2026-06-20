@@ -27,6 +27,13 @@ export async function withTenantContext<T>(
     await client.query('ROLLBACK');
     throw error;
   } finally {
+    // RESET lại context để đảm bảo không bị rò rỉ dữ liệu sang Spa khác
+    // khi client này được trả về Connection Pool
+    try {
+      await client.query('RESET app.current_tenant');
+    } catch (resetError) {
+      logger.error('Failed to reset tenant context', { error: resetError });
+    }
     client.release();
   }
 }
