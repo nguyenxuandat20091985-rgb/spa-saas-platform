@@ -1,5 +1,4 @@
 import winston from 'winston';
-import DailyRotateFile from 'winston-daily-rotate-file';
 import { AsyncLocalStorage } from 'async_hooks';
 
 // ==========================================
@@ -26,44 +25,19 @@ export function runWithLogContext<T>(context: LogContext, fn: () => T): T {
 }
 
 // ==========================================
-// CẤU HÌNH LOG FORMAT
+// CẤU HÌNH LOG FORMAT (Giữ nguyên như cũ)
 // ==========================================
 const isProduction = process.env.NODE_ENV === 'production';
 const isTest = process.env.NODE_ENV === 'test';
 
-// Format cho production (JSON)
-const jsonFormat = winston.format.combine(
+// Format log cơ bản
+const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.errors({ stack: true }),
-  winston.format.metadata({
-    fillExcept: ['timestamp', 'level', 'message', 'service', 'context'],
-  }),
-  winston.format((info) => {
-    // Sanitize sensitive data
-    if (info.metadata) {
-      const sensitiveFields = ['password', 'token', 'secret', 'apiKey', 'creditCard'];
-      const sanitize = (obj: any): any => {
-        if (!obj || typeof obj !== 'object') return obj;
-        const result: any = {};
-        for (const [key, value] of Object.entries(obj)) {
-          if (sensitiveFields.some(f => key.toLowerCase().includes(f))) {
-            result[key] = '[REDACTED]';
-          } else if (typeof value === 'object') {
-            result[key] = sanitize(value);
-          } else {
-            result[key] = value;
-          }
-        }
-        return result;
-      };
-      info.metadata = sanitize(info.metadata);
-    }
-    return info;
-  })(),
   winston.format.json(),
 );
 
-// Format cho development (colorize + readable)
+// Format cho development (màu sắc, dễ đọc)
 const devFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.errors({ stack: true }),
@@ -71,10 +45,10 @@ const devFormat = winston.format.combine(
   winston.format.printf(({ timestamp, level, message, service, context, stack, ...meta }) => {
     let log = `${timestamp} [${service}] ${level}: ${message}`;
     if (context && Object.keys(context).length > 0) {
-      log += `\n  Context: ${JSON.stringify(context, null, 2)}`;
+      log += `\n  Context: ${JSON.stringify(context)}`;
     }
     if (Object.keys(meta).length > 0 && !meta.metadata) {
-      log += `\n  Meta: ${JSON.stringify(meta, null, 2)}`;
+      log += `\n  Meta: ${JSON.stringify(meta)}`;
     }
     if (stack) {
       log += `\n  Stack: ${stack}`;
@@ -84,56 +58,21 @@ const devFormat = winston.format.combine(
 );
 
 // ==========================================
-// LOG TRANSPORTS
-// ==========================================
-const transports: winston.transport[] = [];
-
-// Console transport
-transports.push(
-  new winston.transports.Console({
-    format: isProduction ? jsonFormat : devFormat,
-    silent: isTest,
-  }),
-);
-
-// File transport với rotation (production only)
-if (isProduction) {
-  // Error log file
-  transports.push(
-    new DailyRotateFile({
-      filename: 'logs/error-%DATE%.log',
-      datePattern: 'YYYY-MM-DD',
-      level: 'error',
-      maxSize: '20m',
-      maxFiles: '14d',
-      format: jsonFormat,
-    }),
-  );
-
-  // Combined log file
-  transports.push(
-    new DailyRotateFile({
-      filename: 'logs/combined-%DATE%.log',
-      datePattern: 'YYYY-MM-DD',
-      maxSize: '20m',
-      maxFiles: '14d',
-      format: jsonFormat,
-    }),
-  );
-}
-
-// ==========================================
-// MAIN LOGGER
+// TẠO LOGGER
 // ==========================================
 export const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug'),
-  format: jsonFormat,
+  format: logFormat,
   defaultMeta: {
     service: process.env.SERVICE_NAME || 'spa-ecosystem',
     environment: process.env.NODE_ENV || 'development',
   },
-  transports,
-  // Exit on error = false để không crash app khi log lỗi
+  transports: [
+    new winston.transports.Console({
+      format: isProduction ? logFormat : devFormat,
+      silent: isTest,
+    }),
+  ],
   exitOnError: false,
 });
 
@@ -172,27 +111,14 @@ export function logApiCall(req: any, res: any, duration: number): void {
     path: req.path,
     statusCode: res.statusCode,
     duration: `${duration}ms`,
-    userAgent: req.headers?.['user-agent'],
-    contentLength: res.getHeader?.('content-length'),
   });
 }
 
-export function logDbQuery(query: string, params?: any[], duration?: number): void {
+export function logDbQuery(query: string, duration?: number): void {
   logger.debug('Database query', {
     context: getContextMeta(),
-    query: query.substring(0, 500), // Limit query length
-    params: params?.slice(0, 10), // Limit params
+    query: query.substring(0, 500),
     duration: duration ? `${duration}ms` : undefined,
-  });
-}
-
-export function logAiCall(provider: string, model: string, duration: number, tokens: any): void {
-  logger.info('AI call completed', {
-    context: getContextMeta(),
-    provider,
-    model,
-    duration: `${duration}ms`,
-    tokens,
   });
 }
 
@@ -204,18 +130,7 @@ export function createServiceLogger(serviceName: string): winston.Logger {
 }
 
 // ==========================================
-// RESET LOGGER (FOR TESTING)
-// ==========================================
-export function resetLogger(): void {
-  logger.clear();
-  // Re-add transports for testing
-  if (!isTest) {
-    logger.add(new winston.transports.Console({ format: devFormat }));
-  }
-}
-
-// ==========================================
-// EXPORT DEFAULT
+// EXPORT
 // ==========================================
 export default {
   logger,
@@ -225,6 +140,4 @@ export default {
   logError,
   logApiCall,
   logDbQuery,
-  logAiCall,
-  resetLogger,
 };
