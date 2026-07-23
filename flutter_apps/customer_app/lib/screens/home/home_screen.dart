@@ -1,29 +1,423 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:spa_shared/constants/app_colors.dart';
+import 'package:spa_shared/constants/app_strings.dart';
+import 'package:spa_shared/widgets/loading_shimmer.dart';
+import 'package:spa_shared/widgets/error_widget.dart';
+import '../../bloc/home/home_bloc.dart';
+import '../../bloc/home/home_event.dart';
+import '../../bloc/home/home_state.dart';
+import '../../widgets/quick_action_button.dart';
+import '../../widgets/service_card.dart';
+import '../../widgets/product_card.dart';
+import '../../widgets/membership_card.dart';
+import '../../widgets/ai_banner.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load initial data
+    context.read<HomeBloc>().add(const HomeDataRequested());
+  }
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // Luxury Header
-          SliverAppBar(
-            expandedHeight: 260,
-            floating: false,
-            pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF2C3E50), Color(0xFF4A6B8A)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+      body: BlocBuilder<HomeBloc, HomeState>(
+        builder: (context, state) {
+          if (state is HomeLoading) {
+            return const HomeShimmer();
+          }
+
+          if (state is HomeError) {
+            return Center(
+              child: CustomErrorWidget(
+                message: state.message,
+                onRetry: () => context.read<HomeBloc>().add(const HomeDataRequested()),
+              ),
+            );
+          }
+
+          return CustomScrollView(
+            slivers: [
+              // Luxury Header
+              SliverAppBar(
+                expandedHeight: 260,
+                floating: false,
+                pinned: true,
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF2C3E50), Color(0xFF4A6B8A)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                // User avatar with placeholder
+                                GestureDetector(
+                                  onTap: () => _navigateToProfile(context),
+                                  child: CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: Colors.white24,
+                                    child: state.user?.avatarUrl != null
+                                        ? CachedNetworkImage(
+                                            imageUrl: state.user!.avatarUrl!,
+                                            imageBuilder: (context, imageProvider) => CircleAvatar(
+                                              radius: 24,
+                                              backgroundImage: imageProvider,
+                                            ),
+                                            placeholder: (context, url) => const Icon(
+                                              Icons.person,
+                                              color: Colors.white,
+                                            ),
+                                            errorWidget: (context, url, error) =>
+                                                const Icon(Icons.person, color: Colors.white),
+                                          )
+                                        : const Icon(Icons.person, color: Colors.white),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Xin chào',
+                                      style: GoogleFonts.inter(
+                                        color: Colors.white70,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    Text(
+                                      state.user?.fullName ?? 'Beauty AI',
+                                      style: GoogleFonts.playfairDisplay(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const Spacer(),
+                                Stack(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.notifications_outlined,
+                                        color: Colors.white,
+                                      ),
+                                      onPressed: () => _navigateToNotifications(context),
+                                    ),
+                                    if (state.unreadNotifications > 0)
+                                      Positioned(
+                                        right: 8,
+                                        top: 8,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.red,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          constraints: const BoxConstraints(
+                                            minWidth: 16,
+                                            minHeight: 16,
+                                          ),
+                                          child: Text(
+                                            state.unreadNotifications > 9
+                                                ? '9+'
+                                                : '${state.unreadNotifications}',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            // Membership Card
+                            MembershipCard(
+                              tier: state.membershipTier,
+                              points: state.loyaltyPoints,
+                              nextTier: state.nextMembershipTier,
+                              pointsToNext: state.pointsToNextTier,
+                              onUpgrade: () => _navigateToMembership(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
+              ),
+
+              // Quick Actions
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Quick Actions Row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          QuickActionButton(
+                            icon: Icons.calendar_today,
+                            label: 'Đặt lịch',
+                            onTap: () => _navigateToBooking(context),
+                            color: AppColors.primary,
+                          ),
+                          QuickActionButton(
+                            icon: Icons.face_retouching_natural,
+                            label: 'Phân tích da',
+                            onTap: () => _navigateToSkinAnalysis(context),
+                            color: const Color(0xFFB76E79),
+                          ),
+                          QuickActionButton(
+                            icon: Icons.auto_awesome,
+                            label: 'AI Tư vấn',
+                            onTap: () => _navigateToAi(context),
+                            color: const Color(0xFF8B5CF6),
+                          ),
+                          QuickActionButton(
+                            icon: Icons.card_giftcard,
+                            label: 'Voucher',
+                            onTap: () => _navigateToVouchers(context),
+                            color: AppColors.gold,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+
+                      // AI Beauty Assistant Banner
+                      AiBanner(
+                        onTap: () => _navigateToAi(context),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Popular Services
+                      _buildSectionHeader(
+                        title: 'Dịch vụ phổ biến',
+                        onSeeAll: () => _navigateToServices(context),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildServiceList(state.popularServices, context),
+
+                      const SizedBox(height: 24),
+
+                      // Featured Products
+                      _buildSectionHeader(
+                        title: 'Sản phẩm nổi bật',
+                        onSeeAll: () => _navigateToShop(context),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildProductList(state.featuredProducts, context),
+
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader({required String title, VoidCallback? onSeeAll}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.inter(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (onSeeAll != null)
+          TextButton(
+            onPressed: onSeeAll,
+            child: Text(
+              'Xem tất cả',
+              style: GoogleFonts.inter(
+                color: AppColors.primary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildServiceList(List<dynamic> services, BuildContext context) {
+    if (services.isEmpty) {
+      return const SizedBox(
+        height: 180,
+        child: Center(
+          child: Text('Không có dịch vụ nào'),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 200,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: services.length,
+        itemBuilder: (context, index) {
+          final service = services[index];
+          return ServiceCard(
+            id: service.id,
+            name: service.name,
+            price: service.price,
+            imageUrl: service.imageUrl,
+            duration: service.durationMinutes,
+            discountPrice: service.discountPrice,
+            rating: service.rating,
+            onTap: () => _navigateToServiceDetail(context, service.id),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildProductList(List<dynamic> products, BuildContext context) {
+    if (products.isEmpty) {
+      return const SizedBox(
+        height: 220,
+        child: Center(
+          child: Text('Không có sản phẩm nào'),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 260,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: products.length,
+        itemBuilder: (context, index) {
+          final product = products[index];
+          return ProductCard(
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            imageUrl: product.imageUrl,
+            brand: product.brand,
+            isOnSale: product.isOnSale,
+            discountPrice: product.discountPrice,
+            onTap: () => _navigateToProductDetail(context, product.id),
+          );
+        },
+      ),
+    );
+  }
+
+  // ==========================================
+  // NAVIGATION METHODS
+  // ==========================================
+
+  void _navigateToBooking(BuildContext context) {
+    // Navigate to booking screen with tab index
+    final navigationState = context.read<NavigationCubit>();
+    navigationState.setTab(2); // Booking tab
+  }
+
+  void _navigateToAi(BuildContext context) {
+    final navigationState = context.read<NavigationCubit>();
+    navigationState.setTab(1); // AI tab
+  }
+
+  void _navigateToShop(BuildContext context) {
+    final navigationState = context.read<NavigationCubit>();
+    navigationState.setTab(3); // Shop tab
+  }
+
+  void _navigateToProfile(BuildContext context) {
+    final navigationState = context.read<NavigationCubit>();
+    navigationState.setTab(4); // Profile tab
+  }
+
+  void _navigateToNotifications(BuildContext context) {
+    Navigator.pushNamed(context, '/notifications');
+  }
+
+  void _navigateToMembership(BuildContext context) {
+    Navigator.pushNamed(context, '/membership');
+  }
+
+  void _navigateToSkinAnalysis(BuildContext context) {
+    Navigator.pushNamed(context, '/skin-analysis');
+  }
+
+  void _navigateToVouchers(BuildContext context) {
+    Navigator.pushNamed(context, '/vouchers');
+  }
+
+  void _navigateToServices(BuildContext context) {
+    Navigator.pushNamed(context, '/services');
+  }
+
+  void _navigateToServiceDetail(BuildContext context, String serviceId) {
+    Navigator.pushNamed(context, '/service-detail', arguments: serviceId);
+  }
+
+  void _navigateToProductDetail(BuildContext context, String productId) {
+    Navigator.pushNamed(context, '/product-detail', arguments: productId);
+  }
+}
+
+// ==========================================
+// HOME SHIMMER (LOADING STATE)
+// ==========================================
+class HomeShimmer extends StatelessWidget {
+  const HomeShimmer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 260,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                color: Colors.grey[300],
                 child: SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
@@ -32,61 +426,39 @@ class HomeScreen extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            const CircleAvatar(
-                              radius: 24,
-                              backgroundColor: Colors.white24,
-                              child: Icon(Icons.person, color: Colors.white),
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Xin chào', style: GoogleFonts.inter(color: Colors.white70, fontSize: 13)),
-                                Text('Beauty AI', style: GoogleFonts.playfairDisplay(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                                Container(
+                                  width: 80,
+                                  height: 12,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(height: 4),
+                                Container(
+                                  width: 120,
+                                  height: 20,
+                                  color: Colors.white,
+                                ),
                               ],
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-                              onPressed: () {},
                             ),
                           ],
                         ),
                         const SizedBox(height: 24),
-                        // Membership Card
                         Container(
-                          padding: const EdgeInsets.all(16),
+                          height: 80,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                          ),
-                          child: Row(
-                            children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.card_membership, color: AppColors.gold, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text('Member', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text('0 Loyalty Points', style: GoogleFonts.inter(color: Colors.white70, fontSize: 12)),
-                                ],
-                              ),
-                              const Spacer(),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(colors: [AppColors.gold, Color(0xFFDAA520)]),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text('Nâng hạng', style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                              ),
-                            ],
                           ),
                         ),
                       ],
@@ -96,224 +468,72 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
-
-          // Quick Actions
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _QuickAction(icon: Icons.calendar_today, label: 'Đặt lịch', onTap: () {}),
-                      _QuickAction(icon: Icons.face_retouching_natural, label: 'Phân tích da', onTap: () {}),
-                      _QuickAction(icon: Icons.auto_awesome, label: 'AI Tư vấn', onTap: () {}),
-                      _QuickAction(icon: Icons.card_giftcard, label: 'Voucher', onTap: () {}),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // AI Beauty Assistant Banner
-                  InkWell(
-                    onTap: () {},
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFB76E79), Color(0xFF8B4D57)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                    children: List.generate(
+                      4,
+                      (index) => Container(
+                        width: 60,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('AI Beauty Assistant', style: GoogleFonts.playfairDisplay(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 4),
-                                Text('Chuyên gia tư vấn làm đẹp AI', style: GoogleFonts.inter(color: Colors.white70, fontSize: 12)),
-                                const SizedBox(height: 12),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: const Text('Chat ngay', style: TextStyle(color: Colors.white, fontSize: 12)),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.auto_awesome, color: Colors.white, size: 48),
-                        ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // Popular Services
-                  Text('Dịch vụ phổ biến', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w600)),
+                  Container(
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Container(
+                        width: 120,
+                        height: 24,
+                        color: Colors.white,
+                      ),
+                      const Spacer(),
+                      Container(
+                        width: 80,
+                        height: 20,
+                        color: Colors.white,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   SizedBox(
                     height: 180,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
-                      children: [
-                        _ServiceCard(name: 'Chăm sóc da mặt', price: 'Từ 500K', icon: Icons.face),
-                        _ServiceCard(name: 'Trị mụn chuyên sâu', price: 'Từ 800K', icon: Icons.healing),
-                        _ServiceCard(name: 'Massage body', price: 'Từ 400K', icon: Icons.spa),
-                        _ServiceCard(name: 'Điều trị nám', price: 'Từ 1.2M', icon: Icons.brightness_7),
-                      ],
+                      children: List.generate(
+                        3,
+                        (index) => Container(
+                          width: 150,
+                          margin: const EdgeInsets.only(right: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 24),
-
-                  // Featured Products
-                  Text('Sản phẩm nổi bật', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 220,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        _ProductCard(name: 'Serum Vitamin C', price: '450,000 VND', image: Icons.science),
-                        _ProductCard(name: 'Collagen Drink', price: '680,000 VND', image: Icons.local_drink),
-                        _ProductCard(name: 'Sunscreen SPF50+', price: '350,000 VND', image: Icons.wb_sunny),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 32),
                 ],
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _QuickAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _QuickAction({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: AppColors.primary, size: 24),
-          ),
-          const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        ],
-      ),
-    );
-  }
-}
-
-class _ServiceCard extends StatelessWidget {
-  final String name;
-  final String price;
-  final IconData icon;
-
-  const _ServiceCard({required this.name, required this.price, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: Container(
-        width: 150,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.primaryLight.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: AppColors.primary, size: 28),
-            ),
-            const SizedBox(height: 12),
-            Text(name, style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13), maxLines: 2),
-            const Spacer(),
-            Text(price, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600, fontSize: 13)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProductCard extends StatelessWidget {
-  final String name;
-  final String price;
-  final IconData image;
-
-  const _ProductCard({required this.name, required this.price, required this.image});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: Container(
-        width: 160,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              height: 120,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: AppColors.primaryLight.withValues(alpha: 0.2),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: Icon(image, size: 48, color: AppColors.primary),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13), maxLines: 2),
-                  const SizedBox(height: 4),
-                  Text(price, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 14)),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
