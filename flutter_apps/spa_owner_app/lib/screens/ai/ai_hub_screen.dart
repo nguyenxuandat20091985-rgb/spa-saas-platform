@@ -1,495 +1,544 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:spa_shared/constants/app_colors.dart';
+import 'package:spa_shared/widgets/loading_widget.dart';
+import 'package:spa_shared/widgets/empty_state_widget.dart';
+import '../../bloc/ai/ai_hub_bloc.dart';
+import '../../bloc/ai/ai_hub_event.dart';
+import '../../bloc/ai/ai_hub_state.dart';
+import '../../widgets/ai_status_banner.dart';
+import '../../widgets/ai_module_card.dart';
+import '../../widgets/knowledge_section.dart';
+import '../../widgets/ai_chat_screen.dart';
+import '../../widgets/ai_marketing_screen.dart';
+import '../../widgets/ai_skin_analysis_screen.dart';
+import '../../widgets/ai_prediction_screen.dart';
 
-class AiHubScreen extends StatelessWidget {
+class AiHubScreen extends StatefulWidget {
   const AiHubScreen({super.key});
 
   @override
+  State<AiHubScreen> createState() => _AiHubScreenState();
+}
+
+class _AiHubScreenState extends State<AiHubScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<AiHubBloc>().add(const LoadAiStatusEvent());
+    context.read<AiHubBloc>().add(const LoadKnowledgeStatsEvent());
+  }
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('AI Spa Brain', style: GoogleFonts.playfairDisplay()),
+        title: Text(
+          'AI Spa Brain',
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => _navigateToAiSettings(context),
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // AI Status Banner
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF667eea), Color(0xFF764ba2)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
+      body: BlocConsumer<AiHubBloc, AiHubState>(
+        listener: (context, state) {
+          if (state is AiHubError) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.auto_awesome, color: Colors.white, size: 28),
-                      const SizedBox(width: 12),
-                      Text('AI Spa Brain Cloud', style: GoogleFonts.playfairDisplay(
-                        color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold,
-                      )),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Trí tuệ nhân tạo chuyên biệt cho ngành Spa',
-                    style: GoogleFonts.inter(color: Colors.white70, fontSize: 13),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text('Powered by AI', style: TextStyle(color: Colors.white, fontSize: 12)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is AiHubLoading && state.isInitial) {
+            return const Center(
+              child: LoadingWidget(message: 'Đang tải AI...'),
+            );
+          }
 
-            // AI Modules
-            Text('AI Modules', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.1,
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _AiModuleCard(
-                  icon: Icons.chat_bubble_outline,
-                  title: 'AI Sales Consultant',
-                  description: 'Tư vấn bán hàng, upsell, cross-sell',
-                  color: const Color(0xFF3498DB),
-                  onTap: () => _openAiChat(context, 'sales_consult'),
+                // AI Status Banner
+                AiStatusBanner(
+                  status: state is AiStatusLoaded ? state.status : null,
+                  onRefresh: () {
+                    context.read<AiHubBloc>().add(const LoadAiStatusEvent());
+                  },
                 ),
-                _AiModuleCard(
-                  icon: Icons.handshake_outlined,
-                  title: 'AI Closing Agent',
-                  description: 'Phân tích và kịch bản chốt sale',
-                  color: const Color(0xFFE74C3C),
-                  onTap: () => _openAiChat(context, 'closing'),
-                ),
-                _AiModuleCard(
-                  icon: Icons.favorite_outline,
-                  title: 'AI Customer Success',
-                  description: 'Chăm sóc sau bán, tái khám',
-                  color: const Color(0xFF27AE60),
-                  onTap: () => _openAiChat(context, 'customer_success'),
-                ),
-                _AiModuleCard(
-                  icon: Icons.campaign_outlined,
-                  title: 'AI Marketing',
-                  description: 'Tạo chiến dịch Facebook, TikTok, Zalo',
-                  color: const Color(0xFFF39C12),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiMarketingScreen())),
-                ),
-                _AiModuleCard(
-                  icon: Icons.face_retouching_natural,
-                  title: 'AI Skin Analysis',
-                  description: 'Phân tích da bằng AI',
-                  color: const Color(0xFF9B59B6),
-                  onTap: () {},
-                ),
-                _AiModuleCard(
-                  icon: Icons.trending_up,
-                  title: 'AI Prediction',
-                  description: 'Dự đoán doanh thu, churn risk',
-                  color: const Color(0xFF1ABC9C),
-                  onTap: () {},
-                ),
+                const SizedBox(height: 24),
+
+                // AI Modules
+                _buildAiModules(state),
+                const SizedBox(height: 24),
+
+                // Knowledge Base
+                _buildKnowledgeBase(state),
+                const SizedBox(height: 24),
+
+                // Usage Stats
+                _buildUsageStats(state),
+                const SizedBox(height: 32),
               ],
             ),
-            const SizedBox(height: 24),
-
-            // Knowledge Base
-            Text('Knowledge Base', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            _KnowledgeSection(
-              title: 'Sản phẩm',
-              description: 'AI đã học về sản phẩm của bạn',
-              icon: Icons.shopping_bag,
-              count: 0,
-              onTap: () {},
-            ),
-            const SizedBox(height: 8),
-            _KnowledgeSection(
-              title: 'Dịch vụ',
-              description: 'AI đã học về dịch vụ của bạn',
-              icon: Icons.spa,
-              count: 0,
-              onTap: () {},
-            ),
-            const SizedBox(height: 8),
-            _KnowledgeSection(
-              title: 'Tài liệu',
-              description: 'PDF, DOCX, XLSX đã tải lên',
-              icon: Icons.folder,
-              count: 0,
-              onTap: () {},
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.upload_file),
-              label: const Text('Tải lên tài liệu đào tạo AI'),
-            ),
-            const SizedBox(height: 32),
-          ],
-        ),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showQuickActionDialog(context),
+        icon: const Icon(Icons.auto_awesome),
+        label: const Text('AI Quick Actions'),
+        backgroundColor: const Color(0xFF667eea),
       ),
     );
   }
+
+  Widget _buildAiModules(AiHubState state) {
+    final modules = state is AiModulesLoaded ? state.modules : <dynamic>[];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'AI Modules',
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            TextButton(
+              onPressed: () => _navigateToAllModules(context),
+              child: const Text('Xem tất cả'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.1,
+          children: [
+            AiModuleCard(
+              icon: Icons.chat_bubble_outline,
+              title: 'AI Sales Consultant',
+              description: 'Tư vấn bán hàng, upsell, cross-sell',
+              color: const Color(0xFF3498DB),
+              isActive: true,
+              onTap: () => _openAiChat(context, 'sales_consult'),
+            ),
+            AiModuleCard(
+              icon: Icons.handshake_outlined,
+              title: 'AI Closing Agent',
+              description: 'Phân tích và kịch bản chốt sale',
+              color: const Color(0xFFE74C3C),
+              isActive: true,
+              onTap: () => _openAiChat(context, 'closing'),
+            ),
+            AiModuleCard(
+              icon: Icons.favorite_outline,
+              title: 'AI Customer Success',
+              description: 'Chăm sóc sau bán, tái khám',
+              color: const Color(0xFF27AE60),
+              isActive: true,
+              onTap: () => _openAiChat(context, 'customer_success'),
+            ),
+            AiModuleCard(
+              icon: Icons.campaign_outlined,
+              title: 'AI Marketing',
+              description: 'Tạo chiến dịch Facebook, TikTok, Zalo',
+              color: const Color(0xFFF39C12),
+              isActive: true,
+              onTap: () => _navigateToMarketing(context),
+            ),
+            AiModuleCard(
+              icon: Icons.face_retouching_natural,
+              title: 'AI Skin Analysis',
+              description: 'Phân tích da bằng AI',
+              color: const Color(0xFF9B59B6),
+              isActive: true,
+              onTap: () => _navigateToSkinAnalysis(context),
+            ),
+            AiModuleCard(
+              icon: Icons.trending_up,
+              title: 'AI Prediction',
+              description: 'Dự đoán doanh thu, churn risk',
+              color: const Color(0xFF1ABC9C),
+              isActive: false,
+              onTap: () => _navigateToPrediction(context),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKnowledgeBase(AiHubState state) {
+    final stats = state is KnowledgeStatsLoaded ? state.stats : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Knowledge Base',
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            TextButton(
+              onPressed: () => _navigateToKnowledge(context),
+              child: const Text('Quản lý'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        KnowledgeSection(
+          title: 'Sản phẩm',
+          description: 'AI đã học về sản phẩm của bạn',
+          icon: Icons.shopping_bag,
+          count: stats?.productCount ?? 0,
+          onTap: () => _navigateToProductKnowledge(context),
+        ),
+        const SizedBox(height: 8),
+        KnowledgeSection(
+          title: 'Dịch vụ',
+          description: 'AI đã học về dịch vụ của bạn',
+          icon: Icons.spa,
+          count: stats?.serviceCount ?? 0,
+          onTap: () => _navigateToServiceKnowledge(context),
+        ),
+        const SizedBox(height: 8),
+        KnowledgeSection(
+          title: 'Tài liệu',
+          description: 'PDF, DOCX, XLSX đã tải lên',
+          icon: Icons.folder,
+          count: stats?.documentCount ?? 0,
+          onTap: () => _navigateToDocuments(context),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => _showUploadDialog(context),
+          icon: const Icon(Icons.upload_file),
+          label: const Text('Tải lên tài liệu đào tạo AI'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUsageStats(AiHubState state) {
+    final usage = state is UsageStatsLoaded ? state.usage : null;
+
+    if (usage == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'AI Usage',
+          style: GoogleFonts.inter(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.divider),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      '${usage.totalTokens}',
+                      style: GoogleFonts.inter(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    Text(
+                      'Tokens',
+                      style: GoogleFonts.inter(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 40,
+                color: AppColors.divider,
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      '${usage.totalMessages}',
+                      style: GoogleFonts.inter(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.success,
+                      ),
+                    ),
+                    Text(
+                      'Messages',
+                      style: GoogleFonts.inter(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 40,
+                color: AppColors.divider,
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      AppFormatters.currency(usage.estimatedCost),
+                      style: GoogleFonts.inter(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                    Text(
+                      'Est. Cost',
+                      style: GoogleFonts.inter(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // NAVIGATION METHODS
+  // ==========================================
 
   void _openAiChat(BuildContext context, String contextType) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => AiChatScreen(contextType: contextType)),
+      MaterialPageRoute(
+        builder: (_) => AiChatScreen(contextType: contextType),
+      ),
     );
   }
-}
 
-class _AiModuleCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String description;
-  final Color color;
-  final VoidCallback onTap;
+  void _navigateToMarketing(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AiMarketingScreen(),
+      ),
+    );
+  }
 
-  const _AiModuleCard({
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.color,
-    required this.onTap,
-  });
+  void _navigateToSkinAnalysis(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AiSkinAnalysisScreen(),
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  void _navigateToPrediction(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AiPredictionScreen(),
+      ),
+    );
+  }
+
+  void _navigateToAiSettings(BuildContext context) {
+    Navigator.pushNamed(context, '/ai-settings');
+  }
+
+  void _navigateToAllModules(BuildContext context) {
+    Navigator.pushNamed(context, '/ai-modules');
+  }
+
+  void _navigateToKnowledge(BuildContext context) {
+    Navigator.pushNamed(context, '/ai-knowledge');
+  }
+
+  void _navigateToProductKnowledge(BuildContext context) {
+    Navigator.pushNamed(context, '/ai-knowledge/products');
+  }
+
+  void _navigateToServiceKnowledge(BuildContext context) {
+    Navigator.pushNamed(context, '/ai-knowledge/services');
+  }
+
+  void _navigateToDocuments(BuildContext context) {
+    Navigator.pushNamed(context, '/ai-knowledge/documents');
+  }
+
+  void _showUploadDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tải lên tài liệu'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(height: 12),
-            Text(title, style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13)),
-            const SizedBox(height: 4),
-            Text(description, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), maxLines: 2),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _KnowledgeSection extends StatelessWidget {
-  final String title;
-  final String description;
-  final IconData icon;
-  final int count;
-  final VoidCallback onTap;
-
-  const _KnowledgeSection({
-    required this.title,
-    required this.description,
-    required this.icon,
-    required this.count,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.primary, size: 24),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                  Text(description, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.primaryLight.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text('$count', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
-            ),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// AI Chat Screen
-class AiChatScreen extends StatefulWidget {
-  final String contextType;
-
-  const AiChatScreen({super.key, required this.contextType});
-
-  @override
-  State<AiChatScreen> createState() => _AiChatScreenState();
-}
-
-class _AiChatScreenState extends State<AiChatScreen> {
-  final _messageController = TextEditingController();
-  final _scrollController = ScrollController();
-  final List<_ChatMessage> _messages = [];
-  bool _isLoading = false;
-
-  String get _title {
-    switch (widget.contextType) {
-      case 'sales_consult': return 'AI Sales Consultant';
-      case 'closing': return 'AI Closing Agent';
-      case 'customer_success': return 'AI Customer Success';
-      default: return 'AI Chat';
-    }
-  }
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _sendMessage() {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
-    setState(() {
-      _messages.add(_ChatMessage(text: text, isUser: true));
-      _messages.add(_ChatMessage(
-        text: 'Xin chào! Tôi là $_title. Hiện tại cần kết nối API để trả lời. Vui lòng cấu hình GEMINI_API_KEY.',
-        isUser: false,
-      ));
-      _messageController.clear();
-    });
-
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_title),
-        actions: [
-          IconButton(icon: const Icon(Icons.history), onPressed: () {}),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _messages.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.auto_awesome, size: 64, color: AppColors.primary.withValues(alpha: 0.3)),
-                        const SizedBox(height: 16),
-                        Text(_title, style: GoogleFonts.playfairDisplay(fontSize: 24, color: AppColors.textPrimary)),
-                        const SizedBox(height: 8),
-                        const Text('Hãy bắt đầu cuộc trò chuyện', style: TextStyle(color: AppColors.textSecondary)),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (ctx, i) {
-                      final msg = _messages[i];
-                      return Align(
-                        alignment: msg.isUser ? Alignment.centerRight : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(14),
-                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                          decoration: BoxDecoration(
-                            color: msg.isUser ? AppColors.primary : AppColors.surface,
-                            borderRadius: BorderRadius.circular(16).copyWith(
-                              bottomRight: msg.isUser ? const Radius.circular(4) : null,
-                              bottomLeft: !msg.isUser ? const Radius.circular(4) : null,
-                            ),
-                            border: msg.isUser ? null : Border.all(color: AppColors.divider),
-                          ),
-                          child: Text(
-                            msg.text,
-                            style: TextStyle(
-                              color: msg.isUser ? Colors.white : AppColors.textPrimary,
-                              fontSize: 14,
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          // Input
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border(top: BorderSide(color: AppColors.divider)),
-            ),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: 'Nhập tin nhắn...',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      ),
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white),
-                      onPressed: _sendMessage,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChatMessage {
-  final String text;
-  final bool isUser;
-
-  _ChatMessage({required this.text, required this.isUser});
-}
-
-// AI Marketing Screen
-class AiMarketingScreen extends StatefulWidget {
-  const AiMarketingScreen({super.key});
-
-  @override
-  State<AiMarketingScreen> createState() => _AiMarketingScreenState();
-}
-
-class _AiMarketingScreenState extends State<AiMarketingScreen> {
-  String _selectedChannel = 'facebook';
-  String _selectedObjective = 'engagement';
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('AI Marketing')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Kênh marketing', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600)),
+            const Text('Chọn loại tài liệu:'),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               children: [
-                _ChannelChip(label: 'Facebook', isSelected: _selectedChannel == 'facebook', onTap: () => setState(() => _selectedChannel = 'facebook')),
-                _ChannelChip(label: 'TikTok', isSelected: _selectedChannel == 'tiktok', onTap: () => setState(() => _selectedChannel = 'tiktok')),
-                _ChannelChip(label: 'Zalo', isSelected: _selectedChannel == 'zalo', onTap: () => setState(() => _selectedChannel = 'zalo')),
-                _ChannelChip(label: 'SMS', isSelected: _selectedChannel == 'sms', onTap: () => setState(() => _selectedChannel = 'sms')),
-                _ChannelChip(label: 'Email', isSelected: _selectedChannel == 'email', onTap: () => setState(() => _selectedChannel = 'email')),
+                _UploadTypeChip(label: 'PDF', icon: Icons.picture_as_pdf),
+                _UploadTypeChip(label: 'DOCX', icon: Icons.description),
+                _UploadTypeChip(label: 'XLSX', icon: Icons.table_chart),
+                _UploadTypeChip(label: 'TEXT', icon: Icons.text_fields),
+                _UploadTypeChip(label: 'IMAGE', icon: Icons.image),
               ],
-            ),
-            const SizedBox(height: 24),
-            Text('Mục tiêu', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              value: _selectedObjective,
-              items: const [
-                DropdownMenuItem(value: 'awareness', child: Text('Tăng nhận diện')),
-                DropdownMenuItem(value: 'engagement', child: Text('Tăng tương tác')),
-                DropdownMenuItem(value: 'conversion', child: Text('Tăng doanh thu')),
-                DropdownMenuItem(value: 'retention', child: Text('Giữ chân khách')),
-              ],
-              onChanged: (v) => setState(() => _selectedObjective = v!),
-              decoration: const InputDecoration(labelText: 'Mục tiêu chiến dịch'),
             ),
             const SizedBox(height: 16),
             const TextField(
-              decoration: InputDecoration(labelText: 'Chủ đề (tùy chọn)', hintText: 'VD: Khuyến mãi mùa hè'),
+              decoration: InputDecoration(
+                labelText: 'Tiêu đề',
+                prefixIcon: Icon(Icons.title),
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () {},
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Chọn file'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tải lên'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showQuickActionDialog(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Wrap(
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
             ),
             const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.auto_awesome),
-                label: const Text('Tạo chiến dịch bằng AI'),
+            Text(
+              'AI Quick Actions',
+              style: GoogleFonts.playfairDisplay(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
               ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.chat, color: AppColors.primary),
+              title: const Text('Chat với AI Sales'),
+              onTap: () {
+                Navigator.pop(context);
+                _openAiChat(context, 'sales_consult');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.face_retouching_natural, color: Color(0xFF9B59B6)),
+              title: const Text('Phân tích da'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToSkinAnalysis(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.campaign, color: Color(0xFFF39C12)),
+              title: const Text('Tạo chiến dịch marketing'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToMarketing(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.trending_up, color: Color(0xFF1ABC9C)),
+              title: const Text('Xem dự đoán doanh thu'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToPrediction(context);
+              },
             ),
           ],
         ),
@@ -498,30 +547,22 @@ class _AiMarketingScreenState extends State<AiMarketingScreen> {
   }
 }
 
-class _ChannelChip extends StatelessWidget {
+// ==========================================
+// UPLOAD TYPE CHIP
+// ==========================================
+class _UploadTypeChip extends StatelessWidget {
   final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
+  final IconData icon;
 
-  const _ChannelChip({required this.label, required this.isSelected, required this.onTap});
+  const _UploadTypeChip({required this.label, required this.icon});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isSelected ? AppColors.primary : AppColors.divider),
-        ),
-        child: Text(label, style: TextStyle(
-          color: isSelected ? Colors.white : AppColors.textSecondary,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-        )),
-      ),
+    return Chip(
+      label: Text(label),
+      avatar: Icon(icon, size: 16),
+      backgroundColor: AppColors.surface,
+      side: BorderSide(color: AppColors.divider),
     );
   }
 }
