@@ -1,7 +1,7 @@
 version: '3.8'
 
 # ==========================================
-# ĐỊNH NGHĨA CẤU HÌNH DÙNG CHUNG (DRY Principle)
+# ĐỊNH NGHĶA CẤU HÌNH DÙNG CHUNG (DRY Principle)
 # ==========================================
 x-service-defaults: &service-defaults
   restart: unless-stopped
@@ -94,7 +94,11 @@ services:
     networks:
       - spa-network
 
-  # ---------- BACKEND MICROSERVICES ----------
+  # ==========================================
+  # BACKEND MICROSERVICES
+  # ==========================================
+
+  # ---------- 1. API GATEWAY ----------
   api-gateway:
     <<: *service-defaults
     build:
@@ -110,13 +114,18 @@ services:
       - SERVICE_POS_URL=http://pos-service:${POS_SERVICE_PORT:-3004}
       - SERVICE_INVENTORY_URL=http://inventory-service:${INVENTORY_SERVICE_PORT:-3005}
       - SERVICE_CRM_URL=http://crm-service:${CRM_SERVICE_PORT:-3006}
+      - SERVICE_NOTIFICATION_URL=http://notification-service:${NOTIFICATION_SERVICE_PORT:-3007}
+      - SERVICE_BILLING_URL=http://billing-service:${BILLING_SERVICE_PORT:-3008}
+      - SERVICE_MEMBERSHIP_URL=http://membership-service:${MEMBERSHIP_SERVICE_PORT:-3009}
       - SERVICE_AI_GATEWAY_URL=http://ai-gateway:${AI_GATEWAY_PORT:-3010}
       - SERVICE_ANALYTICS_URL=http://analytics-service:${ANALYTICS_SERVICE_PORT:-3013}
+      - SERVICE_MEDIA_URL=http://media-service:${MEDIA_SERVICE_PORT:-3014}
       - SERVICE_ADMIN_URL=http://admin-service:${ADMIN_SERVICE_PORT:-3015}
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
+  # ---------- 2. AUTH SERVICE ----------
   auth-service:
     <<: *service-defaults
     build:
@@ -133,6 +142,7 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
+  # ---------- 3. BOOKING SERVICE ----------
   booking-service:
     <<: *service-defaults
     build:
@@ -147,6 +157,7 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
+  # ---------- 4. POS SERVICE ----------
   pos-service:
     <<: *service-defaults
     build:
@@ -161,6 +172,7 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3004/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
+  # ---------- 5. INVENTORY SERVICE ----------
   inventory-service:
     <<: *service-defaults
     build:
@@ -175,6 +187,7 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
+  # ---------- 6. CRM SERVICE ----------
   crm-service:
     <<: *service-defaults
     build:
@@ -189,6 +202,70 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3006/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
+  # ---------- 7. NOTIFICATION SERVICE ----------
+  notification-service:
+    <<: *service-defaults
+    build:
+      context: ./backend
+      dockerfile: ./notification-service/Dockerfile
+    container_name: spa-notification-service
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT:-3007}:3007"
+    environment:
+      - PORT=${NOTIFICATION_SERVICE_PORT:-3007}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMS_PROVIDER=${SMS_PROVIDER:-twilio}
+      - SMS_ACCOUNT_SID=${SMS_ACCOUNT_SID}
+      - SMS_AUTH_TOKEN=${SMS_AUTH_TOKEN}
+      - SMS_FROM=${SMS_FROM:-SpaEco}
+      - ZALO_ACCESS_TOKEN=${ZALO_ACCESS_TOKEN}
+      - ZALO_OA_ID=${ZALO_OA_ID}
+      - FIREBASE_SERVER_KEY=${FIREBASE_SERVER_KEY}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3007/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+
+  # ---------- 8. BILLING SERVICE ----------
+  billing-service:
+    <<: *service-defaults
+    build:
+      context: ./backend
+      dockerfile: ./billing-service/Dockerfile
+    container_name: spa-billing-service
+    ports:
+      - "${BILLING_SERVICE_PORT:-3008}:3008"
+    environment:
+      - PORT=${BILLING_SERVICE_PORT:-3008}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - VNPAY_MERCHANT_ID=${VNPAY_MERCHANT_ID}
+      - VNPAY_SECRET_KEY=${VNPAY_SECRET_KEY}
+      - MOMO_PARTNER_CODE=${MOMO_PARTNER_CODE}
+      - MOMO_ACCESS_KEY=${MOMO_ACCESS_KEY}
+      - MOMO_SECRET_KEY=${MOMO_SECRET_KEY}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3008/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+
+  # ---------- 9. MEMBERSHIP SERVICE ----------
+  membership-service:
+    <<: *service-defaults
+    build:
+      context: ./backend
+      dockerfile: ./membership-service/Dockerfile
+    container_name: spa-membership-service
+    ports:
+      - "${MEMBERSHIP_SERVICE_PORT:-3009}:3009"
+    environment:
+      - PORT=${MEMBERSHIP_SERVICE_PORT:-3009}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3009/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+
+  # ---------- 10. AI GATEWAY ----------
   ai-gateway:
     <<: *service-defaults
     build:
@@ -204,10 +281,28 @@ services:
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEFAULT_AI_PROVIDER=${DEFAULT_AI_PROVIDER:-gemini}
+      - VECTOR_DB_HOST=qdrant
+      - VECTOR_DB_PORT=${VECTOR_DB_PORT:-6333}
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3010/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
+  # ---------- 11. QDRANT (VECTOR DB) ----------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: spa-qdrant
+    restart: unless-stopped
+    ports:
+      - "${VECTOR_DB_PORT:-6333}:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${VECTOR_DB_API_KEY:-}
+    networks:
+      - spa-network
+
+  # ---------- 12. ANALYTICS SERVICE ----------
   analytics-service:
     <<: *service-defaults
     build:
@@ -222,6 +317,31 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3013/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
+  # ---------- 13. MEDIA SERVICE ----------
+  media-service:
+    <<: *service-defaults
+    build:
+      context: ./backend
+      dockerfile: ./media-service/Dockerfile
+    container_name: spa-media-service
+    ports:
+      - "${MEDIA_SERVICE_PORT:-3014}:3014"
+    environment:
+      - PORT=${MEDIA_SERVICE_PORT:-3014}
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-minio}
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+      - S3_BUCKET=${S3_BUCKET:-spa-assets}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-10485760}
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3014/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+
+  # ---------- 14. ADMIN SERVICE ----------
   admin-service:
     <<: *service-defaults
     build:
@@ -250,3 +370,5 @@ volumes:
     name: spa-redis-data
   minio_data:
     name: spa-minio-data
+  qdrant_data:
+    name: spa-qdrant-data
