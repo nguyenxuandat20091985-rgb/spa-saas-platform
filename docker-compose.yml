@@ -1,128 +1,252 @@
 version: '3.8'
 
-# Định nghĩa các cấu hình dùng chung để tránh lặp lại (DRY principle)
+# ==========================================
+# ĐỊNH NGHĨA CẤU HÌNH DÙNG CHUNG (DRY Principle)
+# ==========================================
 x-service-defaults: &service-defaults
+  restart: unless-stopped
   environment:
-    - NODE_ENV=development
-    - DB_HOST=postgres
-    - REDIS_HOST=redis
+    - NODE_ENV=${NODE_ENV:-development}
+    - LOG_LEVEL=${LOG_LEVEL:-debug}
+    - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-spa_ecosystem}
+    - REDIS_URL=redis://redis:6379
     - JWT_SECRET=${JWT_SECRET}
   depends_on:
     postgres:
       condition: service_healthy
     redis:
-      condition: service_started
+      condition: service_healthy
+  networks:
+    - spa-network
 
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 5
+  start_period: 40s
+
+# ==========================================
+# DỊCH VỤ (SERVICES)
+# ==========================================
 services:
-  # === DATABASES ===
+  # ---------- DATABASES ----------
   postgres:
     image: postgres:16-alpine
     container_name: spa-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: spa_ecosystem
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-spa_ecosystem}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-spa_ecosystem}"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - spa-network
 
   redis:
     image: redis:7-alpine
     container_name: spa-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - spa-network
 
-  # === BACKEND SERVICES ===
+  # ---------- MINIO (FILE STORAGE) ----------
+  minio:
+    image: minio/minio:latest
+    container_name: spa-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - "${S3_PORT:-9000}:9000"
+      - "${S3_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 20s
+    networks:
+      - spa-network
+
+  # ---------- BACKEND MICROSERVICES ----------
   api-gateway:
     <<: *service-defaults
-    build: { context: ./backend, dockerfile: ./api-gateway/Dockerfile }
+    build:
+      context: ./backend
+      dockerfile: ./api-gateway/Dockerfile
     container_name: spa-api-gateway
-    ports: ["3000:3000"]
+    ports:
+      - "${API_GATEWAY_PORT:-3000}:3000"
     environment:
-      - PORT=3000
-      <<: *service-defaults.environment
+      - PORT=${API_GATEWAY_PORT:-3000}
+      - SERVICE_AUTH_URL=http://auth-service:${AUTH_SERVICE_PORT:-3001}
+      - SERVICE_BOOKING_URL=http://booking-service:${BOOKING_SERVICE_PORT:-3003}
+      - SERVICE_POS_URL=http://pos-service:${POS_SERVICE_PORT:-3004}
+      - SERVICE_INVENTORY_URL=http://inventory-service:${INVENTORY_SERVICE_PORT:-3005}
+      - SERVICE_CRM_URL=http://crm-service:${CRM_SERVICE_PORT:-3006}
+      - SERVICE_AI_GATEWAY_URL=http://ai-gateway:${AI_GATEWAY_PORT:-3010}
+      - SERVICE_ANALYTICS_URL=http://analytics-service:${ANALYTICS_SERVICE_PORT:-3013}
+      - SERVICE_ADMIN_URL=http://admin-service:${ADMIN_SERVICE_PORT:-3015}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
   auth-service:
     <<: *service-defaults
-    build: { context: ./backend, dockerfile: ./auth-service/Dockerfile }
+    build:
+      context: ./backend
+      dockerfile: ./auth-service/Dockerfile
     container_name: spa-auth-service
-    ports: ["3001:3001"]
+    ports:
+      - "${AUTH_SERVICE_PORT:-3001}:3001"
     environment:
-      - PORT=3001
-      <<: *service-defaults.environment
-
-  crm-service:
-    <<: *service-defaults
-    build: { context: ./backend, dockerfile: ./crm-service/Dockerfile }
-    container_name: spa-crm-service
-    ports: ["3006:3006"]
-    environment:
-      - PORT=3006
-      <<: *service-defaults.environment
+      - PORT=${AUTH_SERVICE_PORT:-3001}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION=${JWT_EXPIRATION:-24h}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
   booking-service:
     <<: *service-defaults
-    build: { context: ./backend, dockerfile: ./booking-service/Dockerfile }
+    build:
+      context: ./backend
+      dockerfile: ./booking-service/Dockerfile
     container_name: spa-booking-service
-    ports: ["3003:3003"]
+    ports:
+      - "${BOOKING_SERVICE_PORT:-3003}:3003"
     environment:
-      - PORT=3003
-      <<: *service-defaults.environment
+      - PORT=${BOOKING_SERVICE_PORT:-3003}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
   pos-service:
     <<: *service-defaults
-    build: { context: ./backend, dockerfile: ./pos-service/Dockerfile }
+    build:
+      context: ./backend
+      dockerfile: ./pos-service/Dockerfile
     container_name: spa-pos-service
-    ports: ["3004:3004"]
+    ports:
+      - "${POS_SERVICE_PORT:-3004}:3004"
     environment:
-      - PORT=3004
-      <<: *service-defaults.environment
+      - PORT=${POS_SERVICE_PORT:-3004}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3004/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
   inventory-service:
     <<: *service-defaults
-    build: { context: ./backend, dockerfile: ./inventory-service/Dockerfile }
+    build:
+      context: ./backend
+      dockerfile: ./inventory-service/Dockerfile
     container_name: spa-inventory-service
-    ports: ["3005:3005"]
+    ports:
+      - "${INVENTORY_SERVICE_PORT:-3005}:3005"
     environment:
-      - PORT=3005
-      <<: *service-defaults.environment
+      - PORT=${INVENTORY_SERVICE_PORT:-3005}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+
+  crm-service:
+    <<: *service-defaults
+    build:
+      context: ./backend
+      dockerfile: ./crm-service/Dockerfile
+    container_name: spa-crm-service
+    ports:
+      - "${CRM_SERVICE_PORT:-3006}:3006"
+    environment:
+      - PORT=${CRM_SERVICE_PORT:-3006}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3006/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
   ai-gateway:
     <<: *service-defaults
-    build: { context: ./backend, dockerfile: ./ai-gateway/Dockerfile }
+    build:
+      context: ./backend
+      dockerfile: ./ai-gateway/Dockerfile
     container_name: spa-ai-gateway
-    ports: ["3010:3010"]
+    ports:
+      - "${AI_GATEWAY_PORT:-3010}:3010"
     environment:
-      - PORT=3010
+      - PORT=${AI_GATEWAY_PORT:-3010}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      <<: *service-defaults.environment
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEFAULT_AI_PROVIDER=${DEFAULT_AI_PROVIDER:-gemini}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3010/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
   analytics-service:
     <<: *service-defaults
-    build: { context: ./backend, dockerfile: ./analytics-service/Dockerfile }
+    build:
+      context: ./backend
+      dockerfile: ./analytics-service/Dockerfile
     container_name: spa-analytics-service
-    ports: ["3013:3013"]
+    ports:
+      - "${ANALYTICS_SERVICE_PORT:-3013}:3013"
     environment:
-      - PORT=3013
-      <<: *service-defaults.environment
+      - PORT=${ANALYTICS_SERVICE_PORT:-3013}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3013/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
   admin-service:
     <<: *service-defaults
-    build: { context: ./backend, dockerfile: ./admin-service/Dockerfile }
+    build:
+      context: ./backend
+      dockerfile: ./admin-service/Dockerfile
     container_name: spa-admin-service
-    ports: ["3015:3015"]
+    ports:
+      - "${ADMIN_SERVICE_PORT:-3015}:3015"
     environment:
-      - PORT=3015
-      <<: *service-defaults.environment
+      - PORT=${ADMIN_SERVICE_PORT:-3015}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3015/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
 
+# ---------- MẠNG (NETWORKS) ----------
+networks:
+  spa-network:
+    name: spa-network
+    driver: bridge
+
+# ---------- VOLUMES (LƯU TRỮ DỮ LIỆU) ----------
 volumes:
   postgres_data:
+    name: spa-postgres-data
   redis_data:
+    name: spa-redis-data
+  minio_data:
+    name: spa-minio-data
