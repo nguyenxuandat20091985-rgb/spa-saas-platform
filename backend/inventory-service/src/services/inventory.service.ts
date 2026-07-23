@@ -1046,4 +1046,58 @@ export class InventoryService {
     branchId?: string,
     date?: string,
   ): Promise<{
-    summary: { totalProducts: number; totalValue: number; totalCost: number; outOfStock: number; low
+    summary: { totalProducts: number; totalValue: number; totalCost: number; outOfStock: number; lowStock: number };
+    details: InventoryWithDetails[];
+  }> {
+    const inventory = await this.getInventory(tenantId, branchId);
+
+    const summary = {
+      totalProducts: inventory.length,
+      totalValue: inventory.reduce((sum, item) => sum + item.quantity * (item.price || 0), 0),
+      totalCost: inventory.reduce((sum, item) => sum + item.quantity * (item.costPrice || 0), 0),
+      outOfStock: inventory.filter((i) => i.quantity === 0).length,
+      lowStock: inventory.filter((i) => i.quantity > 0 && i.quantity <= (i.minStockLevel || 5)).length,
+    };
+
+    return { summary, details: inventory };
+  }
+
+  // ==========================================
+  // 13. BÁO CÁO GIAO DỊCH
+  // ==========================================
+  async getTransactionReport(
+    tenantId: string,
+    params: {
+      branchId?: string;
+      startDate?: string;
+      endDate?: string;
+      type?: string;
+    },
+  ): Promise<{
+    summary: { totalReceived: number; totalDispatched: number; totalValue: number };
+    transactions: TransactionWithDetails[];
+  }> {
+    const result = await this.getTransactions(tenantId, {
+      branchId: params.branchId,
+      startDate: params.startDate,
+      endDate: params.endDate,
+      type: params.type as any,
+      page: 1,
+      limit: 1000,
+    });
+
+    const transactions = result.data;
+    const totalReceived = transactions
+      .filter((t) => t.type === 'receive' || t.type === 'transfer_in')
+      .reduce((sum, t) => sum + t.quantity, 0);
+    const totalDispatched = transactions
+      .filter((t) => t.type === 'dispatch' || t.type === 'transfer_out')
+      .reduce((sum, t) => sum + t.quantity, 0);
+    const totalValue = transactions.reduce((sum, t) => sum + t.quantity * (t.costPrice || 0), 0);
+
+    return {
+      summary: { totalReceived, totalDispatched, totalValue },
+      transactions,
+    };
+  }
+}
